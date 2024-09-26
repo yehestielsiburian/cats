@@ -8,6 +8,7 @@ class CatsAPI {
   constructor() {
     this.baseURL = "https://api.catshouse.club";
     this.totalCats = 0;
+    this.ipinfoToken = "106f4fc976a027"; // Token API Anda dari ipinfo.io
   }
 
   headers(authorization) {
@@ -25,7 +26,6 @@ class CatsAPI {
     };
   }
 
-  // Membaca proxy dari file
   readProxiesFromFile(filePath) {
     const data = fs.readFileSync(filePath, 'utf-8');
     return data.split('\n').map(line => line.trim()).filter(line => line);
@@ -121,6 +121,19 @@ class CatsAPI {
     console.log(`\nTotal $CATS all accounts: ${this.totalCats.toFixed(3)}`.green.bold);
   }
 
+  async getProxyInfo(proxy) {
+    try {
+      const response = await axios.get(`https://ipinfo.io/?token=${this.ipinfoToken}`, {
+        proxy: false,
+        httpsAgent: new HttpsProxyAgent(proxy),
+      });
+      return response.data;
+    } catch (error) {
+      console.log(`Error fetching proxy info: ${error.response ? error.response.data : error.message}`.red);
+      return null;
+    }
+  }
+
   async main() {
     const dataFile = "data.txt";
     const proxiesFile = "proxies.txt"; // Nama file yang berisi daftar proxy
@@ -128,38 +141,51 @@ class CatsAPI {
     const proxies = this.readProxiesFromFile(proxiesFile);
     const referralCode = "inWAZ8WTRR25zmFBHLNtq";
 
-    let proxyIndex = 0; // Indeks untuk memilih proxy
+    // Pastikan jumlah entri di data dan proxies sama
+    if (data.length !== proxies.length) {
+      console.log("Error: The number of accounts and proxies must be the same.".red);
+      return;
+    }
 
-    while (true) {
-      this.totalCats = 0;
-      for (let no = 0; no < data.length; no++) {
-        const authorization = data[no];
-        const proxy = proxies[proxyIndex % proxies.length]; // Menggunakan proxy secara bergantian
+    for (let no = 0; no < data.length; no++) {
+      const authorization = data[no];
+      const proxy = proxies[no]; // Gunakan proxy yang sesuai untuk setiap akun
 
-        console.log(`\n[ Account ${no + 1} ]`.cyan.bold);
-
-        try {
-          await this.createUser(authorization, referralCode, proxy);
-        } catch (error) {
-          if (!error.response?.data?.message.includes("already exist")) {
-            throw error;
-          }
-        }
-
-        const userInfoResponse = await this.getUserInfo(authorization, proxy);
-        const userInfo = userInfoResponse.data;
-        console.log(`Name\t: ${userInfo.firstName}`.white);
-        console.log(`Balance\t: ${userInfo.totalRewards}`.yellow);
-        this.totalCats += parseFloat(userInfo.totalRewards);
-
-        await this.completeTasks(authorization, proxy);
-        console.log();
+      // Ambil dan tampilkan informasi proxy
+      const proxyInfo = await this.getProxyInfo(proxy);
+      if (proxyInfo) {
+        // Hanya menampilkan informasi proxy jika berhasil
+        console.log(`Using Proxy: ${proxy}`.magenta);
       }
 
-      this.displaySummary();
-      proxyIndex++; // Ganti ke proxy berikutnya
-      await this.waitWithCountdown(7 * 60 * 60); // 7 hours in seconds
+      console.log(`\n[ Account ${no + 1} ]`.cyan.bold);
+
+      try {
+        await this.createUser(authorization, referralCode, proxy);
+      } catch (error) {
+        if (!error.response?.data?.message.includes("already exist")) {
+          throw error;
+        }
+      }
+
+      const userInfoResponse = await this.getUserInfo(authorization, proxy);
+      const userInfo = userInfoResponse.data;
+      
+      // Menampilkan informasi sesuai format yang diinginkan
+      console.log(`Name    : ${userInfo.firstName}`.white);
+      if (proxyInfo) {
+        console.log(`Proxy IP: ${proxyInfo.ip}`.green);
+        console.log(`Country : ${proxyInfo.country}`.green);
+      }
+      console.log(`Balance : ${userInfo.totalRewards}`.yellow);
+      this.totalCats += parseFloat(userInfo.totalRewards);
+
+      await this.completeTasks(authorization, proxy);
+      console.log();
     }
+
+    this.displaySummary();
+    await this.waitWithCountdown(7 * 60 * 60); // 7 jam dalam detik
   }
 }
 
